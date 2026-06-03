@@ -78,8 +78,23 @@
 </main>
 <div class="tabs"><button class="tab active" onclick="show('home')">⌂<span>الرئيسية</span></button><button class="tab" onclick="show('note')">✎<span>تدوين</span></button><button class="tab" onclick="show('place')">⌖<span>مكان</span></button><button class="tab" onclick="show('link')">↗<span>رابط</span></button><button class="tab" onclick="show('settings')">⚙<span>إعدادات</span></button></div><div id="toast" class="toast"></div>
 <script>
-let passcode=localStorage.getItem('mudhakkirati_passcode')||'', noteData={}, loc=null, placeImage='', trackers=[]; const $=id=>document.getElementById(id);
-const LOCAL_KEY='mudhakkirati_local_mirror_v2', QUEUE_KEY='mudhakkirati_outbox_v2';
+let passcode=localStorage.getItem('mudhakkirati_passcode')||'', noteData={}, loc=loadLastLocation(), placeImage='', trackers=[]; const $=id=>document.getElementById(id);
+const LOCAL_KEY='mudhakkirati_local_mirror_v2', QUEUE_KEY='mudhakkirati_outbox_v2', LAST_LOC_KEY='mudhakkirati_last_location_v1';
+function loadLastLocation(){try{let v=JSON.parse(localStorage.getItem('mudhakkirati_last_location_v1')||'null');return v&&v.lat&&v.lon?v:null}catch(e){return null}}
+function rememberLocation(){if(loc)localStorage.setItem(LAST_LOC_KEY,JSON.stringify(Object.assign({savedAt:new Date().toISOString()},loc)))}
+function setLocationStatus(t){let e=$('locStatus');if(e)e.textContent=t}
+function locationErrorMessage(e){let msg=(e&&e.message)||'لم يتم السماح بتحديد الموقع';if(e&&e.code===1)msg='إذن الموقع مرفوض. فعّل إذن الموقع لهذا الموقع ثم جرّب مرة ثانية.';if(e&&e.code===2)msg='لم يستطع الجهاز تحديد موقعك الآن. تأكد من تشغيل GPS والإنترنت.';if(e&&e.code===3)msg='انتهت مهلة تحديد الموقع. جرّب من مكان مفتوح أو أعد المحاولة.';return msg}
+function receiveLocation(p,source='تم التقاط الموقع'){loc={lat:p.coords.latitude,lon:p.coords.longitude,accuracy:p.coords.accuracy||null};rememberLocation();setLocationStatus(source+'. سيُحفظ باسم الشارع ورقم البناء إن توفر.');toast(source)}
+function requestLocationOnEntry(){
+  if(!window.isSecureContext){toast('تحديد الموقع يحتاج رابط HTTPS مثل Vercel، وليس http عادي.');return}
+  if(!navigator.geolocation){toast('المتصفح لا يدعم اللوكيشن');return}
+  setLocationStatus('جاري تحديد الموقع تلقائياً بعد الدخول…');
+  navigator.geolocation.getCurrentPosition(
+    p=>receiveLocation(p,'تم تحديد موقعك تلقائياً عند الدخول'),
+    e=>{let msg='لم أستطع أخذ اللوكيشن: '+locationErrorMessage(e);setLocationStatus(msg);toast(msg)},
+    {enableHighAccuracy:true,timeout:15000,maximumAge:60000}
+  )
+}
 function loadLocal(k){try{return JSON.parse(localStorage.getItem(k)||'[]')}catch(e){return[]}}
 function saveLocal(k,v){localStorage.setItem(k,JSON.stringify(v));refreshLocalStats()}
 function mirror(type,payload){let a=loadLocal(LOCAL_KEY);a.unshift({type,payload,at:new Date().toISOString()});saveLocal(LOCAL_KEY,a.slice(0,500))}
@@ -89,12 +104,30 @@ function toast(t){let e=$('toast');e.textContent=t;e.style.display='block';setTi
 async function api(path,opts={}){opts.headers=Object.assign({'Content-Type':'application/json','X-Passcode':passcode},opts.headers||{});let r=await fetch(path,opts),d=await r.json();if(!r.ok||d.ok===false)throw new Error(d.error||'خطأ');return d}
 async function sendWithLocal(type,path,payload){mirror(type,payload);try{let d=await api(path,{method:'POST',body:JSON.stringify(payload)});toast((d.message||'تم الحفظ')+(d.supabase&&d.supabase.ok?' + Supabase':' + محلي'));return d}catch(e){queue(path,payload);toast('حُفظ محلياً على الجوال، وسأعيد الرفع عند الاتصال');throw e}}
 async function flushQueue(){let q=loadLocal(QUEUE_KEY);if(!q.length||!passcode)return;let rest=[];for(let it of q){try{await api(it.path,{method:'POST',body:JSON.stringify(it.payload)})}catch(e){rest.push(it)}}saveLocal(QUEUE_KEY,rest);if(q.length&&!rest.length)toast('تم رفع كل العناصر المنتظرة')}
-async function login(){let p=$('passInput').value.trim();let r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passcode:p})});let d=await r.json();if(d.ok){passcode=p;localStorage.setItem('mudhakkirati_passcode',p);$('login').classList.add('hide');await loadStatus();flushQueue()}else toast('رمز الدخول غير صحيح')}
-function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));let tabs=[...document.querySelectorAll('.tab')],map={home:0,note:1,place:2,link:3,settings:4}; if(map[id]!=null)tabs[map[id]].classList.add('active'); if(id==='home')loadStatus()}
+async function login(){let p=$('passInput').value.trim();let r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passcode:p})});let d=await r.json();if(d.ok){passcode=p;localStorage.setItem('mudhakkirati_passcode',p);$('login').classList.add('hide');await loadStatus();flushQueue();requestLocationOnEntry()}else toast('رمز الدخول غير صحيح')}
+function show(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));$(id).classList.add('active');document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));let tabs=[...document.querySelectorAll('.tab')],map={home:0,note:1,place:2,link:3,settings:4}; if(map[id]!=null)tabs[map[id]].classList.add('active'); if(id==='home')loadStatus(); if(id==='place'&&loc)setLocationStatus('تم تحديد الموقع مسبقاً عند الدخول. يمكنك الحفظ مباشرة أو إعادة الالتقاط.')}
 document.querySelectorAll('.choices').forEach(g=>g.addEventListener('click',e=>{let c=e.target.closest('.choice');if(!c)return;g.querySelectorAll('.choice').forEach(x=>x.classList.remove('selected'));c.classList.add('selected');noteData[g.dataset.field]=c.textContent.trim()}));
 function nextStep(n){$('noteStep'+n).classList.remove('active');$('noteStep'+(n+1)).classList.add('active')}
 async function saveNote(){let tags=$('noteTags').value.split(/[،,]/).map(x=>x.trim()).filter(Boolean);let payload=Object.assign({},noteData,{body:$('noteBody').value,title:$('noteTitle').value,tags,action:$('noteAction').value,topics:[]});await sendWithLocal('note','/api/save-note',payload).catch(()=>{});show('home')}
-async function captureLocation(){if(!navigator.geolocation){toast('المتصفح لا يدعم اللوكيشن');return}$('locStatus').textContent='جاري تحديد الموقع…';navigator.geolocation.getCurrentPosition(p=>{loc={lat:p.coords.latitude,lon:p.coords.longitude};$('locStatus').textContent='تم التقاط الموقع. سيُحفظ باسم الشارع ورقم البناء إن توفر.'},e=>toast('لم أستطع أخذ اللوكيشن: '+e.message),{enableHighAccuracy:true,timeout:15000})}
+async function captureLocation(){
+  if(!window.isSecureContext){
+    let msg='تحديد الموقع يحتاج رابط آمن HTTPS. افتح التطبيق من رابط Vercel أو رابط النفق الآمن، وليس من http عادي.';
+    setLocationStatus(msg);
+    toast(msg);
+    return;
+  }
+  if(!navigator.geolocation){toast('المتصفح لا يدعم اللوكيشن');return}
+  setLocationStatus('جاري تحديد الموقع…');
+  navigator.geolocation.getCurrentPosition(
+    p=>receiveLocation(p,'تم التقاط الموقع'),
+    e=>{
+      let msg='لم أستطع أخذ اللوكيشن: '+locationErrorMessage(e);
+      setLocationStatus(msg);
+      toast(msg);
+    },
+    {enableHighAccuracy:true,timeout:15000,maximumAge:60000}
+  )
+}
 function previewPlacePhoto(){let f=$('placePhoto').files[0];if(!f)return;let r=new FileReader();r.onload=()=>{placeImage=r.result;$('placePreview').src=placeImage;$('placePreview').style.display='block'};r.readAsDataURL(f)}
 async function savePlace(){if(!loc){toast('اضغط التقط اللوكيشن أولاً');return}let payload={lat:loc.lat,lon:loc.lon,name:$('placeName').value,category:$('placeCategory').value,notes:$('placeNotes').value,status:$('placeStatus').value,image:placeImage};await sendWithLocal('place','/api/save-place',payload).catch(()=>{});$('placeName').value='';$('placeNotes').value='';placeImage='';$('placePreview').style.display='none';show('home')}
 function inferKindFromUrl(raw){let u=(raw||'').toLowerCase(),host='';try{let x=new URL(u.match(/^\w+:\/\//)?u:'https://'+u);host=x.hostname.replace(/^www\./,'')}catch(e){} if(host.includes('youtube.com')||host.includes('youtu.be'))return'YouTube'; if(u.split('?')[0].endsWith('.pdf'))return'PDF'; if(['github.com','zotero.org','obsidian.md','notion.so'].some(h=>host.includes(h)))return'أداة'; return host?'موقع':'تلقائي'}
@@ -109,5 +142,5 @@ async function loadStatus(){try{let d=await api('/api/status');$('filesCount').t
 async function syncFromSupabase(){try{let d=await api('/api/sync-from-supabase');toast(d.message+' — روابط: '+d.synced.links+'، أماكن: '+d.synced.places+'، مذكرات: '+d.synced.notes);loadStatus()}catch(e){toast('فشلت المزامنة: '+e.message)}}
 async function doSearch(){let d=await api('/api/search?q='+encodeURIComponent($('query').value));$('results').innerHTML=d.results.map(i=>`<div class="item"><b>${i.title}</b><p>${i.path}</p><p>${i.snippet||''}</p></div>`).join('')||'<p class="muted">لا توجد نتائج</p>'}
 function copyMobileUrl(){let u=$('mobileUrl').textContent;navigator.clipboard&&navigator.clipboard.writeText(u);toast('تم نسخ رابط الجوال')}
-if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});refreshLocalStats();if(passcode){$('login').classList.add('hide');loadStatus();flushQueue()}window.addEventListener('online',flushQueue);
+if('serviceWorker'in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});refreshLocalStats();if(passcode){$('login').classList.add('hide');loadStatus();flushQueue();setTimeout(requestLocationOnEntry,600)}window.addEventListener('online',flushQueue);
 </script></body></html>
