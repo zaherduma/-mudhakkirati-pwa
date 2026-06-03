@@ -1031,6 +1031,13 @@ def status() -> dict:
             words += len(p.read_text(encoding="utf-8", errors="ignore").split())
         except Exception:
             pass
+    supabase_ready = supabase_configured()
+    supabase_error = ""
+    if supabase_ready:
+        check = supabase_select("notes", "select=id&limit=1")
+        supabase_ready = bool(check.get("ok"))
+        if not supabase_ready:
+            supabase_error = str(check.get("error") or "")[:240]
     return {
         "ok": True,
         "vault": str(VAULT),
@@ -1040,6 +1047,8 @@ def status() -> dict:
         "topics": list(TOPIC_MAP.keys()),
         "passcode_required": True,
         "supabase_configured": supabase_configured(),
+        "supabase_ready": supabase_ready,
+        "supabase_error": supabase_error,
         "supabase_url": SUPABASE_URL,
         "supabase_bucket": SUPABASE_BUCKET,
         "mobile_url": f"http://{local_ip()}:{PORT}",
