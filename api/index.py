@@ -99,7 +99,7 @@ def _valid_passcode(value: str) -> bool:
 
 
 def authorized() -> bool:
-    if request.path in {"/api/auth", "/api/reset-passcode", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/"}:
+    if request.path in {"/api/auth", "/api/reset-passcode", "/fix-login", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/"}:
         return True
     return _valid_passcode(request.headers.get("X-Passcode", ""))
 
@@ -122,6 +122,52 @@ def service_worker():
 @app.get("/icon.svg")
 def icon():
     return send_file(core.STATIC / "icon.svg", mimetype="image/svg+xml; charset=utf-8")
+
+
+@app.get("/fix-login")
+def fix_login():
+    html = """<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>إصلاح الدخول</title>
+<style>
+body{font-family:Tahoma,Arial,sans-serif;background:#f7f7fa;color:#222;display:grid;place-items:center;min-height:100vh;margin:0;padding:20px;text-align:center}
+.box{background:white;border:1px solid #ddd;border-radius:22px;padding:24px;max-width:520px;box-shadow:0 18px 50px rgba(0,0,0,.10)}
+button,a{display:inline-block;margin:10px;padding:14px 18px;border-radius:14px;border:0;background:#2f7df6;color:white;text-decoration:none;font-weight:bold;font-size:18px}
+.small{color:#666;line-height:1.8}
+</style>
+</head>
+<body>
+<div class="box">
+<h1>جاري إصلاح الدخول…</h1>
+<p class="small" id="msg">سأمسح النسخة القديمة وأدخل بالرمز 10101.</p>
+<button onclick="fixNow()">إصلاح الدخول الآن</button>
+<a href="/?pass=10101&v=force-clean-login">فتح التطبيق</a>
+</div>
+<script>
+async function fixNow(){
+  const msg=document.getElementById('msg');
+  try{msg.textContent='مسح التخزين المحلي…'; localStorage.clear(); sessionStorage.clear();}catch(e){}
+  try{msg.textContent='مسح الكاش…'; if(window.caches){let keys=await caches.keys(); await Promise.all(keys.map(k=>caches.delete(k)));}}catch(e){}
+  try{msg.textContent='إلغاء service worker القديم…'; if(navigator.serviceWorker){let regs=await navigator.serviceWorker.getRegistrations(); await Promise.all(regs.map(r=>r.unregister()));}}catch(e){}
+  try{localStorage.setItem('mudhakkirati_passcode','10101');}catch(e){}
+  msg.textContent='تم الإصلاح. سيتم فتح التطبيق الآن…';
+  setTimeout(()=>{location.replace('/?pass=10101&v=force-clean-login-'+Date.now())},700);
+}
+fixNow();
+</script>
+</body></html>"""
+    return Response(
+        html,
+        status=200,
+        mimetype="text/html; charset=utf-8",
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+        },
+    )
 
 
 @app.post("/api/auth")
