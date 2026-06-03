@@ -188,6 +188,7 @@ CATEGORY_TABLES = {
     "moods": (core.get_moods, core.add_mood, core.remove_mood),
     "place-categories": (core.get_place_categories, core.add_place_category, core.remove_place_category),
     "link-types": (core.get_link_types, core.add_link_type, core.remove_link_type),
+    "tracker-types": (core.get_tracker_types, core.add_tracker_type, core.remove_tracker_type),
 }
 
 

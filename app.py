@@ -213,6 +213,18 @@ def remove_link_type(name: str) -> dict:
     return _remove_category("link_types", name)
 
 
+def get_tracker_types() -> dict:
+    return _get_category_table("tracker_types")
+
+
+def add_tracker_type(name: str) -> dict:
+    return _add_category("tracker_types", name)
+
+
+def remove_tracker_type(name: str) -> dict:
+    return _remove_category("tracker_types", name)
+
+
 TOPIC_MAP = {
     "النفس والمشاعر": "02 - المذكرات حسب الموضوع/النفس والمشاعر.md",
     "العائلة": "02 - المذكرات حسب الموضوع/العائلة.md",
