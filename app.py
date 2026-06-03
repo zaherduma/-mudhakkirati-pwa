@@ -1200,7 +1200,12 @@ def export_data(data_type: str, fmt: str) -> dict:
     table, heading = EXPORT_TABLES[data_type]
     rows_resp = supabase_select(table, "select=*&order=created_at.desc&limit=1000")
     if not rows_resp.get("ok") or not isinstance(rows_resp.get("data"), list):
-        return {"ok": False, "error": "فشل جلب البيانات"}
+        raw_error = str(rows_resp.get("error") or "")
+        if "Invalid API key" in raw_error:
+            return {"ok": False, "error": "فشل جلب البيانات: مفتاح Supabase في Vercel غير صحيح. يلزم تحديث SUPABASE_SERVICE_ROLE_KEY أو SUPABASE_ANON_KEY ثم إعادة النشر."}
+        if not supabase_configured():
+            return {"ok": False, "error": "فشل جلب البيانات: Supabase غير مضبوط."}
+        return {"ok": False, "error": "فشل جلب البيانات من Supabase"}
     rows = rows_resp["data"]
     fields = EXPORT_FIELDS[data_type]
     if fmt == "docx":

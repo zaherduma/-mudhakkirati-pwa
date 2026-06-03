@@ -217,7 +217,7 @@ for cat_key in CATEGORY_TABLES:
                      methods=["GET", "POST"],
                      endpoint=f"cat_list_{cat_key}")
     app.add_url_rule(f"/api/categories/{cat_key}/<path:name>",
-                     view_func=lambda c=cat_key, n="": category_delete_route(c, n),
+                     view_func=lambda name, c=cat_key: category_delete_route(c, name),
                      methods=["DELETE"],
                      endpoint=f"cat_del_{cat_key}")
 
