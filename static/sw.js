@@ -1,4 +1,4 @@
-const CACHE = 'mudhakkirati-v1';
+const CACHE = 'mudhakkirati-v2-20260603-10101';
 const ASSETS = ['/', '/manifest.webmanifest', '/icon.svg'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));
