@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import html as html_lib
 import io
 import json
 import os
@@ -1137,14 +1138,83 @@ def _export_docx(heading: str, rows: list[dict], fields: list[tuple[str, str]],
     return buf.read(), fname
 
 
+def _has_arabic(text: str) -> bool:
+    return bool(re.search(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]", str(text or "")))
+
+
+def _pdf_visual_text(value) -> str:
+    """Prepare Arabic text for ReportLab PDF paragraphs and escape markup."""
+    if isinstance(value, (list, tuple)):
+        value = "، ".join(str(x) for x in value)
+    elif isinstance(value, dict):
+        value = json.dumps(value, ensure_ascii=False)
+    text = str(value or "")
+    if _has_arabic(text):
+        try:
+            import arabic_reshaper
+            from bidi.algorithm import get_display
+            text = get_display(arabic_reshaper.reshape(text))
+        except Exception:
+            pass
+    return html_lib.escape(text).replace("\n", "<br/>")
+
+
+def _register_pdf_fonts() -> tuple[str, str]:
+    """Register an Arabic-capable TTF font for ReportLab.
+
+    Helvetica renders Arabic as black squares. Try macOS fonts locally and
+    common Linux/Vercel fonts in production, with Helvetica as a last resort.
+    """
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    regular_candidates = [
+        os.environ.get("ARABIC_PDF_FONT", ""),
+        "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+        "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Regular.ttf",
+    ]
+    bold_candidates = [
+        os.environ.get("ARABIC_PDF_FONT_BOLD", ""),
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoNaskhArabic-Bold.ttf",
+    ]
+    regular_name, bold_name = "Helvetica", "Helvetica-Bold"
+    for path in regular_candidates:
+        if path and Path(path).exists():
+            try:
+                pdfmetrics.registerFont(TTFont("ArabicPDF", path))
+                regular_name = "ArabicPDF"
+                break
+            except Exception:
+                pass
+    for path in bold_candidates:
+        if path and Path(path).exists():
+            try:
+                pdfmetrics.registerFont(TTFont("ArabicPDF-Bold", path))
+                bold_name = "ArabicPDF-Bold"
+                break
+            except Exception:
+                pass
+    if bold_name == "Helvetica-Bold" and regular_name != "Helvetica":
+        bold_name = regular_name
+    return regular_name, bold_name
+
+
 def _export_pdf(heading: str, rows: list[dict], fields: list[tuple[str, str]],
                 filename: str) -> tuple[bytes, str]:
-    """إنشاء ملف PDF مع RTL."""
+    """إنشاء ملف PDF عربي واضح بدلاً من مربعات سوداء."""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.enums import TA_RIGHT
+
+    font_name, bold_font_name = _register_pdf_fonts()
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             rightMargin=2*cm, leftMargin=2*cm,
@@ -1152,20 +1222,32 @@ def _export_pdf(heading: str, rows: list[dict], fields: list[tuple[str, str]],
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("TitleAr", parent=styles["Title"],
                                  alignment=TA_RIGHT, fontSize=20,
-                                 fontName="Helvetica")
+                                 fontName=bold_font_name, leading=26)
     body_style = ParagraphStyle("BodyAr", parent=styles["Normal"],
                                 alignment=TA_RIGHT, fontSize=12,
-                                fontName="Helvetica")
-    label_style = ParagraphStyle("LabelAr", parent=styles["Normal"],
-                                 alignment=TA_RIGHT, fontSize=12,
-                                 fontName="Helvetica-Bold")
-    story = [Paragraph(heading, title_style), Spacer(1, 0.5*cm)]
+                                fontName=font_name, leading=18,
+                                wordWrap="RTL")
+    ltr_style = ParagraphStyle("BodyLTR", parent=styles["Normal"],
+                               alignment=0, fontSize=12,
+                               fontName=font_name, leading=18,
+                               wordWrap="LTR")
+    story = [Paragraph(_pdf_visual_text(heading), title_style), Spacer(1, 0.5*cm)]
     for r in rows:
-        story.append(Paragraph(f"<b>{r.get('title', '—')}</b>", body_style))
+        story.append(Paragraph(f"<font name='{bold_font_name}'>{_pdf_visual_text(r.get('title', '—'))}</font>", body_style))
         for label, key in fields:
             val = r.get(key)
             if val:
-                story.append(Paragraph(f"<b>{label}:</b> {val}", body_style))
+                if _has_arabic(str(val)):
+                    story.append(Paragraph(
+                        f"<font name='{bold_font_name}'>{_pdf_visual_text(label)}:</font> {_pdf_visual_text(val)}",
+                        body_style,
+                    ))
+                else:
+                    story.append(Paragraph(
+                        f"<font name='{bold_font_name}'>{_pdf_visual_text(label)}:</font>",
+                        body_style,
+                    ))
+                    story.append(Paragraph(_pdf_visual_text(val), ltr_style))
         story.append(Spacer(1, 0.3*cm))
     doc.build(story)
     buf.seek(0)
@@ -1232,7 +1314,8 @@ def export_data(data_type: str, fmt: str) -> dict:
     if fmt == "docx":
         blob, fname = _export_docx(f"📝 {heading}", rows, fields, data_type)
     elif fmt == "pdf":
-        blob, fname = _export_pdf(f"📝 {heading}", rows, fields, data_type)
+        # لا نضع رموز emoji في PDF لأنها قد تظهر كمربعات في بعض عارضات PDF.
+        blob, fname = _export_pdf(heading, rows, fields, data_type)
     elif fmt == "txt":
         blob, fname = _export_txt(rows, fields, data_type)
     else:
