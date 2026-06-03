@@ -1218,6 +1218,29 @@ def export_data(data_type: str, fmt: str) -> dict:
     }.get(fmt, "application/octet-stream")}
 
 
+# ─── تغيير رمز الدخول ───
+
+
+def change_passcode(new_code: str) -> dict:
+    """تغيير رمز الدخول وحفظه في config.json."""
+    if not new_code or len(new_code.strip()) < 4:
+        return {"ok": False, "error": "رمز الدخول يجب أن يكون 4 أحرف على الأقل"}
+    new_code = new_code.strip()
+    global PASSCODE
+    try:
+        cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    except Exception:
+        cfg = {}
+    cfg["passcode"] = new_code
+    try:
+        CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError:
+        return {"ok": False, "error": "لا يمكن كتابة الملف (للقراءة فقط)"}
+    PASSCODE = new_code  # تحديث الذاكرة فوراً
+    CONFIG["passcode"] = new_code
+    return {"ok": True}
+
+
 class Handler(BaseHTTPRequestHandler):
     server_version = "MudhakkiratiPWA/1.0"
 

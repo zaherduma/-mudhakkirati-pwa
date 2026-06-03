@@ -201,6 +201,14 @@ def add_tracker_entry():
         return json_response({"ok": False, "error": str(exc)}, 500)
 
 
+@app.post("/api/change-passcode")
+def change_passcode():
+    data = request.get_json(silent=True) or {}
+    new_code = data.get("passcode", "")
+    result = core.change_passcode(new_code)
+    return json_response(result, 200 if result.get("ok") else 400)
+
+
 # ─── تصدير البيانات ───
 
 
