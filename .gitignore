@@ -1,0 +1,24 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+.python-version
+.venv/
+venv/
+
+# macOS
+.DS_Store
+
+# Local vault/output data
+الأرشيف الشخصي/
+vault/
+*.log
+
+# Editor
+.vscode/
+.idea/

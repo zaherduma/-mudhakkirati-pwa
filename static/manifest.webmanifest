@@ -1,0 +1,21 @@
+{
+  "name": "مذكرتي الذكية",
+  "short_name": "مذكرتي",
+  "description": "تدوين تفاعلي وحفظ روابط داخل خزنة Markdown/Obsidian",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "dir": "rtl",
+  "lang": "ar",
+  "orientation": "portrait",
+  "theme_color": "#f7f3ea",
+  "background_color": "#fff8ed",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
