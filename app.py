@@ -268,6 +268,47 @@ def reverse_geocode(lat: float, lon: float) -> dict:
         return {"display_name": "", "address": {}}
 
 
+def place_title_from_address(address: dict, display_name: str = "") -> str:
+    """Build a human place title from street + building number, not coordinates."""
+    address = address or {}
+    street = (
+        address.get("road")
+        or address.get("pedestrian")
+        or address.get("footway")
+        or address.get("path")
+        or address.get("residential")
+        or address.get("street")
+        or ""
+    )
+    number = address.get("house_number") or address.get("building") or ""
+    neighbourhood = (
+        address.get("neighbourhood")
+        or address.get("suburb")
+        or address.get("quarter")
+        or address.get("city_district")
+        or ""
+    )
+    city = address.get("city") or address.get("town") or address.get("village") or ""
+    parts = []
+    if street and number:
+        parts.append(f"{street} {number}")
+    elif street:
+        parts.append(street)
+    elif number:
+        parts.append(f"بناء {number}")
+    if neighbourhood and neighbourhood not in parts:
+        parts.append(neighbourhood)
+    if city and city not in parts:
+        parts.append(city)
+    title = " - ".join(str(x).strip() for x in parts if str(x).strip())
+    if title:
+        return title
+    # Last resort: use the beginning of the readable address, never raw lat/lon.
+    if display_name:
+        return display_name.split(",")[0].strip()
+    return "مكان محفوظ"
+
+
 def maps_url(lat: float, lon: float) -> str:
     return f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
 
@@ -304,7 +345,9 @@ def save_place(data: dict) -> dict:
     status = md_escape(data.get("status", "للزيارة لاحقًا"))
     category = md_escape(data.get("category", "مكان"))
     rev = reverse_geocode(lat, lon) if lat and lon else {"display_name": "", "address": {}}
-    title = slugify_ar(data.get("title") or typed_name or rev.get("display_name") or f"مكان {date}", "مكان محفوظ")
+    address_title = place_title_from_address(rev.get("address", {}), rev.get("display_name", ""))
+    # If the user typed a custom place name, keep it; otherwise name the saved place by street + building number.
+    title = slugify_ar(data.get("title") or typed_name or address_title or f"مكان {date}", "مكان محفوظ")
     img_rel = save_data_url_image(data.get("image", ""), f"{date} - {title}")
     img_block = f"![[{img_rel}]]" if img_rel else "—"
     gmap = maps_url(lat, lon) if lat and lon else "—"
@@ -316,6 +359,9 @@ def save_place(data: dict) -> dict:
 
 ## رابط الخريطة
 {gmap}
+
+## اسم الحفظ
+{address_title or title}
 
 ## الإحداثيات
 - Latitude: {lat or '—'}
