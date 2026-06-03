@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import re
@@ -1065,6 +1066,156 @@ def search(q: str) -> dict:
             snippet = re.sub(r"\s+", " ", txt[start:end]).strip()
             results.append({"path": rel_for(p), "title": p.stem, "snippet": snippet})
     return {"ok": True, "results": results[:50]}
+
+
+# ─── دوال التصدير (Word / PDF / TXT) ───
+
+
+def _export_docx(heading: str, rows: list[dict], fields: list[tuple[str, str]],
+                 filename: str) -> tuple[bytes, str]:
+    """إنشاء ملف Word مع RTL ومحاذاة يمنى."""
+    from docx import Document
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    doc = Document()
+    style = doc.styles["Normal"]
+    style.font.name = "Traditional Arabic"
+    style.font.size = Pt(14)
+    style.element.rPr.rFonts.set(qn("w:eastAsia"), "Traditional Arabic")
+    style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for section in doc.sections:
+        section.right_margin = Cm(2.5)
+        section.left_margin = Cm(2.5)
+    title = doc.add_heading(heading, 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    for r in rows:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        run = p.add_run(r.get("title", "—"))
+        run.bold = True
+        run.font.size = Pt(16)
+        run.font.name = "Traditional Arabic"
+        for label, key in fields:
+            val = r.get(key)
+            if val:
+                p2 = doc.add_paragraph()
+                p2.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+                run2 = p2.add_run(f"{label}: ")
+                run2.bold = True
+                run2.font.size = Pt(12)
+                run2.font.name = "Traditional Arabic"
+                run2v = p2.add_run(str(val))
+                run2v.font.size = Pt(12)
+                run2v.font.name = "Traditional Arabic"
+        doc.add_paragraph("─" * 40)
+    fname = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    buf = io.BytesIO()
+    doc.save(buf)
+    buf.seek(0)
+    return buf.read(), fname
+
+
+def _export_pdf(heading: str, rows: list[dict], fields: list[tuple[str, str]],
+                filename: str) -> tuple[bytes, str]:
+    """إنشاء ملف PDF مع RTL."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib.enums import TA_RIGHT
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            rightMargin=2*cm, leftMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("TitleAr", parent=styles["Title"],
+                                 alignment=TA_RIGHT, fontSize=20,
+                                 fontName="Helvetica")
+    body_style = ParagraphStyle("BodyAr", parent=styles["Normal"],
+                                alignment=TA_RIGHT, fontSize=12,
+                                fontName="Helvetica")
+    label_style = ParagraphStyle("LabelAr", parent=styles["Normal"],
+                                 alignment=TA_RIGHT, fontSize=12,
+                                 fontName="Helvetica-Bold")
+    story = [Paragraph(heading, title_style), Spacer(1, 0.5*cm)]
+    for r in rows:
+        story.append(Paragraph(f"<b>{r.get('title', '—')}</b>", body_style))
+        for label, key in fields:
+            val = r.get(key)
+            if val:
+                story.append(Paragraph(f"<b>{label}:</b> {val}", body_style))
+        story.append(Spacer(1, 0.3*cm))
+    doc.build(story)
+    buf.seek(0)
+    fname = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+    return buf.read(), fname
+
+
+def _export_txt(rows: list[dict], fields: list[tuple[str, str]],
+                filename: str) -> tuple[bytes, str]:
+    """إنشاء ملف نصي."""
+    lines = []
+    for r in rows:
+        lines.append(r.get("title", "—"))
+        for label, key in fields:
+            val = r.get(key)
+            if val:
+                lines.append(f"  {label}: {val}")
+        lines.append("─" * 40)
+    text = "\n".join(lines)
+    fname = f"{filename}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+    return text.encode("utf-8"), fname
+
+
+EXPORT_FIELDS = {
+    "notes": [
+        ("النوع", "note_type"), ("الحالة", "mood"), ("السبب", "cause"),
+        ("النص", "body"), ("الإجراء", "action"), ("التاريخ", "date"),
+        ("الوسوم", "tags"), ("المواضيع", "topics"),
+    ],
+    "links": [
+        ("الرابط", "url"), ("النوع", "kind"), ("السبب", "reason"),
+        ("الحالة", "status"), ("ملاحظات", "notes"), ("التاريخ", "date"),
+        ("الوسوم", "tags"),
+    ],
+    "places": [
+        ("العنوان", "address"), ("التصنيف", "category"), ("الحالة", "status"),
+        ("ملاحظات", "notes"), ("التاريخ", "date"),
+        ("الإحداثيات", "lat"), ("خريطة", "maps_url"),
+    ],
+}
+
+EXPORT_TABLES = {
+    "notes": ("notes", "مذكرات"),
+    "links": ("links", "روابط"),
+    "places": ("places", "أماكن"),
+}
+
+
+def export_data(data_type: str, fmt: str) -> dict:
+    """تصدير البيانات من Supabase إلى صيغة معينة."""
+    if data_type not in EXPORT_TABLES:
+        return {"ok": False, "error": "نوع بيانات غير معروف"}
+    table, heading = EXPORT_TABLES[data_type]
+    rows_resp = supabase_select(table, "select=*&order=created_at.desc&limit=1000")
+    if not rows_resp.get("ok") or not isinstance(rows_resp.get("data"), list):
+        return {"ok": False, "error": "فشل جلب البيانات"}
+    rows = rows_resp["data"]
+    fields = EXPORT_FIELDS[data_type]
+    if fmt == "docx":
+        blob, fname = _export_docx(f"📝 {heading}", rows, fields, data_type)
+    elif fmt == "pdf":
+        blob, fname = _export_pdf(f"📝 {heading}", rows, fields, data_type)
+    elif fmt == "txt":
+        blob, fname = _export_txt(rows, fields, data_type)
+    else:
+        return {"ok": False, "error": "صيغة غير معروفة. استخدم docx, pdf, txt"}
+    return {"ok": True, "blob": blob, "filename": fname, "mime": {
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pdf": "application/pdf",
+        "txt": "text/plain; charset=utf-8",
+    }.get(fmt, "application/octet-stream")}
 
 
 class Handler(BaseHTTPRequestHandler):

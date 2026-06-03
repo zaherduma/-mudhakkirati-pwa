@@ -199,6 +199,31 @@ def add_tracker_entry():
         return json_response({"ok": False, "error": str(exc)}, 500)
 
 
+# ─── تصدير البيانات ───
+
+
+@app.get("/api/export/<data_type>")
+def export(data_type: str):
+    fmt = request.args.get("format", "docx")
+    if fmt not in ("docx", "pdf", "txt"):
+        return json_response({"ok": False, "error": "الصيغة غير مدعومة. استخدم docx, pdf, txt"}, 400)
+    try:
+        result = core.export_data(data_type, fmt)
+        if not result.get("ok"):
+            return json_response(result, 400)
+        return Response(
+            result["blob"],
+            status=200,
+            mimetype=result["mime"],
+            headers={
+                "Content-Disposition": f'attachment; filename="{result["filename"]}"',
+                "Cache-Control": "no-store",
+            },
+        )
+    except Exception as exc:
+        return json_response({"ok": False, "error": str(exc)}, 500)
+
+
 @app.errorhandler(404)
 def not_found(_):
     # Keep PWA refreshes working.
