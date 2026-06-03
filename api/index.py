@@ -20,10 +20,56 @@ if str(ROOT) not in sys.path:
 
 import app as core  # noqa: E402
 
+# ─── دوال تخزين رمز الدخول في Supabase ───
+
+
+def _supabase_get_passcode() -> str | None:
+    """قراءة رمز الدخول من Supabase (نظام key-value في جدول notes)."""
+    try:
+        resp = core.supabase_request("GET", "/rest/v1/notes?local_id=eq.__system_passcode__&select=metadata&limit=1")
+        if resp.get("ok") and isinstance(resp.get("data"), list) and len(resp["data"]) > 0:
+            meta = resp["data"][0].get("metadata") or {}
+            return meta.get("passcode")
+    except Exception:
+        pass
+    return None
+
+
+def _supabase_save_passcode(passcode: str) -> bool:
+    """حفظ رمز الدخول في Supabase كـ metadata في سجل خاص."""
+    try:
+        # Check if system row exists
+        meta = {"passcode": passcode}
+        resp = core.supabase_request("GET", "/rest/v1/notes?local_id=eq.__system_passcode__&select=id&limit=1")
+        if resp.get("ok") and isinstance(resp.get("data"), list) and len(resp["data"]) > 0:
+            # Update existing
+            sid = resp["data"][0]["id"]
+            upd = core.supabase_request("PATCH", f"/rest/v1/notes?id=eq.{sid}", {"metadata": meta})
+            return upd.get("ok", False)
+        else:
+            # Insert new
+            from datetime import datetime
+            ins = core.supabase_request("POST", "/rest/v1/notes", {
+                "local_id": "__system_passcode__",
+                "title": "إعدادات النظام",
+                "metadata": meta,
+                "date": datetime.now().isoformat(),
+            })
+            return ins.get("ok", False)
+    except Exception:
+        pass
+    return False
+
+
 # Vercel's deployed project files are read-only. Use /tmp for the local mirror,
 # while Supabase remains the durable cloud store when env vars are configured.
 core.VAULT = Path(os.environ.get("VAULT_PATH", "/tmp/mudhakkirati_vault")).expanduser()
 core.PASSCODE = str(os.environ.get("PASSCODE", os.environ.get("MUDHAKKIRATI_PASSCODE", core.PASSCODE)))
+
+# Check if Supabase has a stored passcode (overrides env var for persistence)
+supabase_pc = _supabase_get_passcode()
+if supabase_pc:
+    core.PASSCODE = supabase_pc
 
 app = Flask(__name__)
 
@@ -205,14 +251,20 @@ def add_tracker_entry():
 def reset_passcode():
     """إعادة تعيين رمز الدخول إلى 000000 (دون الحاجة للرمز القديم)."""
     result = core.change_passcode("000000")
+    if result.get("ok"):
+        core.PASSCODE = "000000"
+        result["supabase_saved"] = _supabase_save_passcode("000000")
     return json_response(result, 200 if result.get("ok") else 400)
 
 
 @app.post("/api/change-passcode")
 def change_passcode():
     data = request.get_json(silent=True) or {}
-    new_code = data.get("passcode", "")
+    new_code = str(data.get("passcode", "")).strip()
     result = core.change_passcode(new_code)
+    if result.get("ok"):
+        core.PASSCODE = new_code
+        result["supabase_saved"] = _supabase_save_passcode(new_code)
     return json_response(result, 200 if result.get("ok") else 400)
 
 

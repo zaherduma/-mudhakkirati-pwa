@@ -925,7 +925,7 @@ def sync_notes_from_supabase() -> int:
     ensure_structure()
     for r in rows["data"]:
         local_id = r.get("local_id") or r.get("id") or ""
-        if not local_id:
+        if not local_id or local_id == "__system_passcode__":
             continue
         date = str(r.get("date") or datetime.now().strftime("%Y-%m-%d"))[:10]
         daily = VAULT / "01 - اليوميات" / date[:4] / date[5:7] / f"{date}.md"
