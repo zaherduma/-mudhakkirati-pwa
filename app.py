@@ -137,6 +137,81 @@ def supabase_select(table: str, query: str = "select=*") -> dict:
     return supabase_request("GET", f"/rest/v1/{table}?{query}", None)
 
 
+# ─── دوال التصنيفات المخصصة (Supabase) ───
+
+
+def _get_category_table(table: str) -> dict:
+    """Get all category names from a Supabase table."""
+    res = supabase_select(table, "select=*&order=name.asc")
+    if res.get("ok") and isinstance(res.get("data"), list):
+        return {"ok": True, "data": [r["name"] for r in res["data"]]}
+    return {"ok": False, "data": [], "error": res.get("error")}
+
+
+def _add_category(table: str, name: str) -> dict:
+    """Add a category to Supabase."""
+    name = md_escape(name)
+    if not name:
+        return {"ok": False, "error": "الاسم فارغ"}
+    res = supabase_insert(table, {"name": name})
+    return {"ok": res.get("ok"), "error": res.get("error")}
+
+
+def _remove_category(table: str, name: str) -> dict:
+    """Remove a category from Supabase by name."""
+    safe = urllib.parse.quote(name)
+    res = supabase_request("DELETE", f"/rest/v1/{table}?name=eq.{safe}")
+    return {"ok": res.get("ok"), "error": res.get("error")}
+
+
+def get_note_types() -> dict:
+    return _get_category_table("note_types")
+
+
+def add_note_type(name: str) -> dict:
+    return _add_category("note_types", name)
+
+
+def remove_note_type(name: str) -> dict:
+    return _remove_category("note_types", name)
+
+
+def get_moods() -> dict:
+    return _get_category_table("moods")
+
+
+def add_mood(name: str) -> dict:
+    return _add_category("moods", name)
+
+
+def remove_mood(name: str) -> dict:
+    return _remove_category("moods", name)
+
+
+def get_place_categories() -> dict:
+    return _get_category_table("place_categories")
+
+
+def add_place_category(name: str) -> dict:
+    return _add_category("place_categories", name)
+
+
+def remove_place_category(name: str) -> dict:
+    return _remove_category("place_categories", name)
+
+
+def get_link_types() -> dict:
+    return _get_category_table("link_types")
+
+
+def add_link_type(name: str) -> dict:
+    return _add_category("link_types", name)
+
+
+def remove_link_type(name: str) -> dict:
+    return _remove_category("link_types", name)
+
+
 TOPIC_MAP = {
     "النفس والمشاعر": "02 - المذكرات حسب الموضوع/النفس والمشاعر.md",
     "العائلة": "02 - المذكرات حسب الموضوع/العائلة.md",

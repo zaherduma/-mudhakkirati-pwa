@@ -76,6 +76,43 @@ def check_auth():
     return None
 
 
+CATEGORY_TABLES = {
+    "note-types": (core.get_note_types, core.add_note_type, core.remove_note_type),
+    "moods": (core.get_moods, core.add_mood, core.remove_mood),
+    "place-categories": (core.get_place_categories, core.add_place_category, core.remove_place_category),
+    "link-types": (core.get_link_types, core.add_link_type, core.remove_link_type),
+}
+
+
+def category_route(category: str):
+    if request.method == "GET":
+        get_fn, _, _ = CATEGORY_TABLES[category]
+        return json_response(get_fn())
+    elif request.method == "POST":
+        data = request.get_json(silent=True) or {}
+        name = data.get("name", "").strip()
+        if not name:
+            return json_response({"ok": False, "error": "الاسم فارغ"}, 400)
+        _, add_fn, _ = CATEGORY_TABLES[category]
+        result = add_fn(name)
+        return json_response(result, 200 if result.get("ok") else 400)
+
+
+def category_delete_route(category: str, name: str):
+    _, _, remove_fn = CATEGORY_TABLES[category]
+    result = remove_fn(name)
+    return json_response(result, 200 if result.get("ok") else 400)
+
+
+for cat_key in CATEGORY_TABLES:
+    app.add_url_rule(f"/api/categories/{cat_key}",
+                     view_func=lambda c=cat_key: category_route(c),
+                     methods=["GET", "POST"])
+    app.add_url_rule(f"/api/categories/{cat_key}/<path:name>",
+                     view_func=lambda c=cat_key, n="": category_delete_route(c, n),
+                     methods=["DELETE"])
+
+
 @app.get("/api/status")
 def status():
     return json_response(core.status())
