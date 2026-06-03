@@ -1170,6 +1170,7 @@ def _register_pdf_fonts() -> tuple[str, str]:
 
     regular_candidates = [
         os.environ.get("ARABIC_PDF_FONT", ""),
+        str(ROOT / "static" / "fonts" / "NotoNaskhArabic-Regular.ttf"),
         "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -1178,6 +1179,7 @@ def _register_pdf_fonts() -> tuple[str, str]:
     ]
     bold_candidates = [
         os.environ.get("ARABIC_PDF_FONT_BOLD", ""),
+        str(ROOT / "static" / "fonts" / "NotoNaskhArabic-Bold.ttf"),
         "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
         "/usr/share/fonts/truetype/noto/NotoSansArabic-Bold.ttf",
@@ -1229,11 +1231,19 @@ def _export_pdf(heading: str, rows: list[dict], fields: list[tuple[str, str]],
                                 wordWrap="RTL")
     ltr_style = ParagraphStyle("BodyLTR", parent=styles["Normal"],
                                alignment=0, fontSize=12,
-                               fontName=font_name, leading=18,
+                               fontName="Helvetica", leading=18,
                                wordWrap="LTR")
+    ltr_bold_style = ParagraphStyle("BodyLTRB", parent=styles["Normal"],
+                                    alignment=0, fontSize=12,
+                                    fontName="Helvetica-Bold", leading=18,
+                                    wordWrap="LTR")
     story = [Paragraph(_pdf_visual_text(heading), title_style), Spacer(1, 0.5*cm)]
     for r in rows:
-        story.append(Paragraph(f"<font name='{bold_font_name}'>{_pdf_visual_text(r.get('title', '—'))}</font>", body_style))
+        title_value = r.get('title', '—')
+        if _has_arabic(str(title_value)):
+            story.append(Paragraph(f"<font name='{bold_font_name}'>{_pdf_visual_text(title_value)}</font>", body_style))
+        else:
+            story.append(Paragraph(_pdf_visual_text(title_value), ltr_bold_style))
         for label, key in fields:
             val = r.get(key)
             if val:
