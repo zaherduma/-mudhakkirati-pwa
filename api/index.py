@@ -38,7 +38,7 @@ def json_response(obj, status: int = 200):
 
 
 def authorized() -> bool:
-    if request.path in {"/api/auth", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/"}:
+    if request.path in {"/api/auth", "/api/reset-passcode", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/"}:
         return True
     return request.headers.get("X-Passcode", "") == core.PASSCODE
 
@@ -199,6 +199,13 @@ def add_tracker_entry():
         return json_response(core.add_tracker_entry(body()))
     except Exception as exc:
         return json_response({"ok": False, "error": str(exc)}, 500)
+
+
+@app.post("/api/reset-passcode")
+def reset_passcode():
+    """إعادة تعيين رمز الدخول إلى 000000 (دون الحاجة للرمز القديم)."""
+    result = core.change_passcode("000000")
+    return json_response(result, 200 if result.get("ok") else 400)
 
 
 @app.post("/api/change-passcode")
