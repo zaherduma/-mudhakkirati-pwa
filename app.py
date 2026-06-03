@@ -28,10 +28,27 @@ DEFAULT_CONFIG = {
 
 
 def load_config() -> dict:
+    """Load local config without crashing on read-only hosts such as Vercel."""
+    config = DEFAULT_CONFIG.copy()
     if CONFIG_PATH.exists():
-        return {**DEFAULT_CONFIG, **json.loads(CONFIG_PATH.read_text(encoding="utf-8"))}
-    CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
-    return DEFAULT_CONFIG.copy()
+        try:
+            config.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+        except Exception:
+            pass
+    else:
+        # Local desktop runs may create a starter config.json. Serverless hosts have
+        # a read-only project filesystem, so failing to write must not crash import.
+        try:
+            CONFIG_PATH.write_text(json.dumps(DEFAULT_CONFIG, ensure_ascii=False, indent=2), encoding="utf-8")
+        except OSError:
+            pass
+    if os.environ.get("VAULT_PATH"):
+        config["vault_path"] = os.environ["VAULT_PATH"]
+    if os.environ.get("PORT"):
+        config["port"] = os.environ["PORT"]
+    if os.environ.get("PASSCODE") or os.environ.get("MUDHAKKIRATI_PASSCODE"):
+        config["passcode"] = os.environ.get("PASSCODE") or os.environ.get("MUDHAKKIRATI_PASSCODE")
+    return config
 
 
 CONFIG = load_config()
