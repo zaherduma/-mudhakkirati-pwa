@@ -107,10 +107,12 @@ def category_delete_route(category: str, name: str):
 for cat_key in CATEGORY_TABLES:
     app.add_url_rule(f"/api/categories/{cat_key}",
                      view_func=lambda c=cat_key: category_route(c),
-                     methods=["GET", "POST"])
+                     methods=["GET", "POST"],
+                     endpoint=f"cat_list_{cat_key}")
     app.add_url_rule(f"/api/categories/{cat_key}/<path:name>",
                      view_func=lambda c=cat_key, n="": category_delete_route(c, n),
-                     methods=["DELETE"])
+                     methods=["DELETE"],
+                     endpoint=f"cat_del_{cat_key}")
 
 
 @app.get("/api/status")
