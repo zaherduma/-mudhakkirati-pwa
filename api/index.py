@@ -87,8 +87,15 @@ def json_response(obj, status: int = 200):
     )
 
 
+def _normalize_passcode(value: str) -> str:
+    """Normalize Arabic/Persian numerals to ASCII digits for mobile Arabic keyboards."""
+    table = str.maketrans("٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹", "01234567890123456789")
+    return str(value or "").strip().translate(table)
+
+
 def _valid_passcode(value: str) -> bool:
-    return value in {core.PASSCODE, FALLBACK_PASSCODE}
+    value = _normalize_passcode(value)
+    return value in {_normalize_passcode(core.PASSCODE), _normalize_passcode(FALLBACK_PASSCODE)}
 
 
 def authorized() -> bool:
