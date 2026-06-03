@@ -1222,11 +1222,16 @@ def export_data(data_type: str, fmt: str) -> dict:
 
 
 def change_passcode(new_code: str) -> dict:
-    """تغيير رمز الدخول وحفظه في config.json."""
+    """تغيير رمز الدخول.
+
+    محلياً: نحاول حفظه في config.json.
+    على Vercel: قد يكون الملف للقراءة فقط، لذلك لا نفشل؛ API يحفظ الرمز في Supabase.
+    """
     if not new_code or len(new_code.strip()) < 4:
         return {"ok": False, "error": "رمز الدخول يجب أن يكون 4 أحرف على الأقل"}
     new_code = new_code.strip()
     global PASSCODE
+    file_saved = True
     try:
         cfg = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
     except Exception:
@@ -1235,10 +1240,10 @@ def change_passcode(new_code: str) -> dict:
     try:
         CONFIG_PATH.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
     except OSError:
-        return {"ok": False, "error": "لا يمكن كتابة الملف (للقراءة فقط)"}
+        file_saved = False
     PASSCODE = new_code  # تحديث الذاكرة فوراً
     CONFIG["passcode"] = new_code
-    return {"ok": True}
+    return {"ok": True, "file_saved": file_saved}
 
 
 class Handler(BaseHTTPRequestHandler):
