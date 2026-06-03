@@ -71,6 +71,10 @@ supabase_pc = _supabase_get_passcode()
 if supabase_pc:
     core.PASSCODE = supabase_pc
 
+# رمز دخول ثابت للطوارئ إلى أن يتم ضبط PASSCODE/Supabase نهائياً على Vercel.
+# هذا يمنع قفل المستخدم خارج التطبيق بعد cold start.
+FALLBACK_PASSCODE = "10101"
+
 app = Flask(__name__)
 
 
@@ -83,10 +87,14 @@ def json_response(obj, status: int = 200):
     )
 
 
+def _valid_passcode(value: str) -> bool:
+    return value in {core.PASSCODE, FALLBACK_PASSCODE}
+
+
 def authorized() -> bool:
     if request.path in {"/api/auth", "/api/reset-passcode", "/manifest.webmanifest", "/sw.js", "/icon.svg", "/"}:
         return True
-    return request.headers.get("X-Passcode", "") == core.PASSCODE
+    return _valid_passcode(request.headers.get("X-Passcode", ""))
 
 
 @app.get("/")
@@ -112,7 +120,7 @@ def icon():
 @app.post("/api/auth")
 def auth():
     data = request.get_json(silent=True) or {}
-    return jsonify({"ok": str(data.get("passcode", "")) == core.PASSCODE})
+    return jsonify({"ok": _valid_passcode(str(data.get("passcode", "")))})
 
 
 @app.before_request
